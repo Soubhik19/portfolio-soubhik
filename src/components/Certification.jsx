@@ -1,23 +1,14 @@
 import React from "react";
 import { motion } from "framer-motion";
-import eth1 from "../assets/Certificates/EthicalHacking.pdf"
-import node1 from "../assets/Certificates/NodejsMOOC.pdf"
-import php1 from "../assets/Certificates/phpmooc.pdf"
-import cpp1 from "../assets/Certificates/cpp1.pdf"
-import fe1 from "../assets/Certificates/KanchanFrontend.pdf"
-import gai1 from "../assets/Certificates/Gai1.pdf"
-import pf1 from "../assets/Certificates/pf1.pdf"
+import c1 from "../assets/Certificates/c1.pdf"
+import c2 from "../assets/Certificates/c2.pdf"
+import c3 from "../assets/Certificates/c3.pdf"
 
 const certificates = [
-  { title: "Mern Stack", pdfLink: "https://cipher-other-assets.s3.ap-south-1.amazonaws.com/certificates/TC_hkkamaldasila333%40gmail.com_CS2024-11203" },
-  { title: "Ethical Hacking", pdfLink: eth1 },
-  { title: "C++ and Data Structures Algorithms", pdfLink: cpp1 },
-  { title: "Generative AI with Large Language Models", pdfLink: gai1 },
-  { title: "Server side JavaScript with Node.js", pdfLink: node1 },
-  { title: "HTML, CSS, and Javascript for Web Developers", pdfLink: fe1 },
-  { title: "Fundamentals of Management", pdfLink: node1 },
-  { title: "Programming Foundations: Data Structures", pdfLink: pf1 },
-  { title: "Building Web Applications in PHP", pdfLink: php1 },
+  { title: "C++ Basics: Selection and Iteration", pdfLink: c3 },
+  { title: "Cloud Computing", pdfLink: c2 },
+  { title: "Data Structures and Algorithms", pdfLink: c1 },
+  
 ];
 
 const Certificates = () => {

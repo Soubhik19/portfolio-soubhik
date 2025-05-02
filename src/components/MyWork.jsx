@@ -61,32 +61,32 @@ const projects = [
 const codingProfiles = [
   {
     platform: "GitHub",
-    link: "https://github.com/kanchan3d",
+    link: "https://github.com/Soubhik19",
     icon: "https://cdn-icons-png.flaticon.com/512/25/25231.png",
   },
   {
     platform: "GeeksforGeeks",
-    link: "https://www.geeksforgeeks.org/user/kanchan3d/",
+    link: "https://www.geeksforgeeks.org/user/soubhik19/",
     icon: "https://media.geeksforgeeks.org/gfg-gg-logo.svg",
   },
   {
     platform: "LeetCode",
-    link: "https://leetcode.com/u/Kanchan3D/",
+    link: "https://leetcode.com/u/soubhiksamanta25/",
     icon: leetcodeIcon,
   },
   {
     platform: "Coding Ninjas",
-    link: "https://www.naukri.com/code360/profile/KanchanD",
+    link: "https://www.hackerrank.com/profile/soubhiksamanta25",
     icon: "https://files.codingninjas.in/new-cn-logos-1-1711622387.svg",
   },
   {
     platform: "HackerRank",
-    link: "https://www.hackerrank.com/profile/kanchan_dasila1",
+    link: "https://www.hackerrank.com/profile/soubhiksamanta25",
     icon: hackerrankIcon,
   },
   {
     platform: "Codeforces",
-    link: "https://codeforces.com/profile/kanchan_3d",
+    link: "https://www.hackerrank.com/profile/soubhiksamanta25",
     icon: codeforcesIcon,
   },
 ];

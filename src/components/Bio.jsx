@@ -9,7 +9,7 @@ const Bio = () => {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.8, ease: "easeOut" }}
       >
-        Hey, I'm Kanchan Dasila 🚀
+        Hey, I'm Soubhik Samanta 🚀
       </motion.h1>
       
       <motion.p

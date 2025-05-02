@@ -17,7 +17,7 @@ const MyInfo = () => {
             </div>
         </div>
         <p className=" ext-gray-900">
-            Want to hire me for work ping me <a className="underline" href="mailto:kanchan.dasila1@gmail.com">mail here</a>
+            Want to hire me for work ping me <a className="underline" href="mailto:soubhiksamanta19@gmail.com">mail here</a>
         </p>
     </div>
     </div>

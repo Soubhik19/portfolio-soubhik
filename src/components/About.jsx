@@ -53,7 +53,7 @@ const About = () => {
       >
         <motion.img
           src={profileImage}
-          alt="Kanchan Dasila"
+          alt="Soubhik Samanta"
           className="rounded-full w-32 h-32 md:w-48 md:h-48 shadow-lg object-cover"
           whileHover={{ scale: 1.1 }}
         />
