@@ -1,6 +1,7 @@
 # Getting Started with Create React App
 <br>
-Author: Kanchan Dasila
+Author: Soubhik Samanta
+
 <br>
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
 
