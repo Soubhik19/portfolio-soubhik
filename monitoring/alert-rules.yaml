@@ -1,0 +1,68 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: portfolio-alerts
+  namespace: monitoring
+  labels:
+    # This label is required — tells Prometheus to pick up this rule
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: portfolio.rules
+      interval: 30s
+      rules:
+
+        # Alert if any pod is crash looping
+        - alert: PodCrashLooping
+          expr: |
+            rate(kube_pod_container_status_restarts_total{
+              namespace="portfolio"
+            }[5m]) * 60 * 5 > 0
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Pod {{ $labels.pod }} is crash looping"
+            description: "Pod {{ $labels.pod }} has restarted more than once in 5 minutes"
+
+        # Alert if deployment has 0 available replicas
+        - alert: DeploymentUnavailable
+          expr: |
+            kube_deployment_status_replicas_available{
+              namespace="portfolio",
+              deployment="portfolio"
+            } == 0
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Portfolio deployment has no available replicas"
+            description: "All pods are down — site is unreachable"
+
+        # Alert if CPU is too high
+        - alert: HighCPUUsage
+          expr: |
+            sum(rate(container_cpu_usage_seconds_total{
+              namespace="portfolio",
+              container="portfolio"
+            }[5m])) * 100 > 80
+          for: 2m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Portfolio CPU usage is above 80%"
+            description: "CPU has been above 80% for 2 minutes — consider scaling"
+
+        # Alert if memory is too high
+        - alert: HighMemoryUsage
+          expr: |
+            sum(container_memory_usage_bytes{
+              namespace="portfolio",
+              container="portfolio"
+            }) / 1024 / 1024 > 200
+          for: 2m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Portfolio memory usage above 200MB"
+            description: "Memory has been high for 2 minutes"
