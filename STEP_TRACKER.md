@@ -780,3 +780,269 @@ portfolio-soubhik/
 **Status**: ✅ Kubernetes Cluster Ready
 **Next**: Create Kubernetes manifests for portfolio deployment
 
+---
+
+## Step 4: Kubernetes Manifests for Minikube Deployment
+
+### Date: 2026-04-25
+### Status: ✅ COMPLETE
+
+---
+
+## What Was Done
+
+### 1. Enable Minikube Addons
+Enabled 3 critical addons for Kubernetes functionality:
+
+```bash
+✅ minikube addons enable ingress          # Nginx ingress controller
+✅ minikube addons enable metrics-server   # For HPA metrics
+✅ minikube addons enable dashboard        # Visual cluster management
+```
+
+**Verification**:
+```bash
+$ minikube addons list | grep -E "ingress|metrics-server|dashboard"
+│ dashboard                   │ minikube │ enabled ✅ │
+│ ingress                     │ minikube │ enabled ✅ │
+│ metrics-server              │ minikube │ enabled ✅ │
+```
+
+### 2. Docker Image in Minikube
+Portfolio Docker image (33.8 MB) already loaded:
+
+```bash
+$ minikube image ls | grep portfolio
+docker.io/library/portfolio-soubhik:latest
+```
+
+**Critical for Minikube**: `imagePullPolicy: Never` in deployment prevents trying to pull from registries; uses local image instead.
+
+### 3. Created 6 Kubernetes Manifests
+
+#### **a. namespace.yaml** (7 lines)
+Purpose: Isolate portfolio workloads in `portfolio` namespace
+- Enables resource quotas and RBAC policies
+- Keeps deployments organized and separate
+
+#### **b. configmap.yaml** (8 lines)
+Purpose: Store configuration as key-value pairs
+```yaml
+data:
+  NODE_ENV: "production"
+  APP_NAME: "portfolio-soubhik"
+```
+Injected into pods via `envFrom` in deployment
+
+#### **c. deployment.yaml** (75 lines)
+**Key Features**:
+- **Replicas**: 2 (minimum for high availability)
+- **imagePullPolicy: Never** - critical for Minikube (uses local image)
+- **Resources**:
+  - Requests: 100m CPU, 128Mi memory (minimum needed)
+  - Limits: 200m CPU, 256Mi memory (safety cap)
+- **Health Probes**:
+  - Readiness: 5s delay, 10s interval (when ready for traffic)
+  - Liveness: 15s delay, 20s interval (when running)
+  - Both check `/health` endpoint
+- **Pod Anti-Affinity**: Spreads pods across different nodes for redundancy
+
+#### **d. service.yaml** (16 lines)
+Purpose: Create stable DNS endpoint inside cluster
+- Type: **ClusterIP** (internal only, no external LB)
+- Port: 80 → containerPort: 80
+- Selector: `app: portfolio` (routes to matching pods)
+
+#### **e. ingress.yaml** (20 lines)
+Purpose: External HTTP access to cluster
+- **ingressClassName: nginx** (Minikube's built-in nginx, not AWS ALB)
+- **Host**: `portfolio.local` (local domain mapping)
+- Routes `/` → `portfolio-service:80`
+
+#### **f. hpa.yaml** (32 lines)
+**Horizontal Pod Autoscaler** - automatically scales pods based on metrics
+- **Min/Max replicas**: 1 - 5 pods
+- **CPU target**: 50% utilization
+- **Memory target**: 70% utilization
+- **Scale-down delay**: 60 seconds (prevents flapping)
+
+### 4. Applied All Manifests to Kubernetes
+
+```bash
+$ kubectl apply -f k8s/namespace.yaml
+namespace/portfolio created
+
+$ kubectl apply -f k8s/configmap.yaml
+configmap/portfolio-config created
+
+$ kubectl apply -f k8s/deployment.yaml
+deployment.apps/portfolio created
+
+$ kubectl apply -f k8s/service.yaml
+service/portfolio-service created
+
+$ kubectl apply -f k8s/ingress.yaml
+ingress.networking.k8s.io/portfolio-ingress created
+
+$ kubectl apply -f k8s/hpa.yaml
+horizontalpodautoscaler.autoscaling/portfolio-hpa created
+```
+
+### 5. Verification Tests ✅
+
+#### Test 1: Pods Running
+```bash
+$ kubectl get pods -n portfolio
+NAME                         READY   STATUS    RESTARTS   AGE
+portfolio-6d9cbf5b8b-c2grr   1/1     Running   0          17s
+portfolio-6d9cbf5b8b-fbfmz   1/1     Running   0          17s
+```
+✅ Both pods Running (2/2 ready)
+
+#### Test 2: Deployment Status
+```bash
+$ kubectl get deployment -n portfolio
+NAME        READY   UP-TO-DATE   AVAILABLE   AGE
+portfolio   2/2     2            2           98s
+```
+✅ Deployment fully rolled out
+
+#### Test 3: Service Created
+```bash
+$ kubectl get svc -n portfolio
+NAME                TYPE        CLUSTER-IP       PORT(S)
+portfolio-service   ClusterIP   10.105.213.151   80/TCP
+```
+✅ ClusterIP service active
+
+#### Test 4: Ingress Created
+```bash
+$ kubectl get ingress -n portfolio
+NAME                CLASS   HOSTS             PORTS   AGE
+portfolio-ingress   nginx   portfolio.local   80      23s
+```
+✅ Nginx ingress controller configured
+
+#### Test 5: HPA Status
+```bash
+$ kubectl get hpa -n portfolio
+NAME            REFERENCE              TARGETS               MINPODS MAXPODS REPLICAS
+portfolio-hpa   Deployment/portfolio   cpu: <unknown>/50%    1       5       2
+                                       memory: 10%/70%
+```
+✅ HPA monitoring metrics (memory at 10% target)
+
+#### Test 6: Portfolio Accessible
+```bash
+$ curl http://localhost:8080/
+# Returns complete HTML page of portfolio
+```
+✅ Portfolio content loaded successfully
+
+#### Test 7: Health Endpoint
+```bash
+$ curl http://localhost:8080/health
+healthy
+```
+✅ Health check working (used by K8s probes)
+
+### 6. Project Structure After Step 4
+
+```
+portfolio-soubhik/
+├── src/                      ← React source
+├── public/                   ← Static files
+├── Dockerfile                ← NEW: Multi-stage build ✅
+├── nginx.conf                ← NEW: Web server config ✅
+├── .dockerignore             ← NEW: Build context optimization ✅
+├── docker-compose.yml        ← NEW: Local orchestration ✅
+├── terraform/                ← NEW: Infrastructure as Code (Terraform)
+│   ├── variables.tf
+│   ├── main.tf
+│   ├── vpc.tf
+│   ├── eks.tf
+│   ├── ecr.tf
+│   └── outputs.tf
+└── k8s/                      ← NEW: Kubernetes Manifests ✅
+    ├── namespace.yaml        (7 lines)
+    ├── configmap.yaml        (8 lines)
+    ├── deployment.yaml       (75 lines)
+    ├── service.yaml          (16 lines)
+    ├── ingress.yaml          (20 lines)
+    └── hpa.yaml              (32 lines)
+                              Total: 158 lines
+```
+
+### Access Your Portfolio
+
+**Option 1: Via kubectl port-forward** (simplest)
+```bash
+kubectl port-forward -n portfolio svc/portfolio-service 8080:80
+
+# Then visit: http://localhost:8080
+```
+
+**Option 2: Via Minikube tunnel** (for ingress)
+```bash
+# Add to /etc/hosts:
+echo "$(minikube ip) portfolio.local" | sudo tee -a /etc/hosts
+
+# Then visit: http://portfolio.local
+```
+
+**Option 3: Dashboard UI** (visual)
+```bash
+minikube dashboard
+# Opens http://localhost:60XXX with cluster visualization
+```
+
+---
+
+## Key Technical Insights
+
+### Why `imagePullPolicy: Never`?
+- **Minikube local images**: Don't exist in registries
+- **Without `Never`**: K8s tries to pull from Docker Hub, fails
+- **With `Never`**: K8s uses locally loaded image
+- **Production (EKS)**: Would use `Always` or `IfNotPresent` + ECR
+
+### Why 2 Pod Replicas?
+- **Availability**: If 1 pod fails, traffic routes to the other
+- **Rolling updates**: Can update 1 pod while other stays active
+- **Resource efficiency**: 2 pods on 3 nodes spreads load
+
+### Why HPA min=1, max=5?
+- **Min 1**: Can scale down to 1 pod when idle (save resources)
+- **Max 5**: Safety cap to prevent runaway scaling
+- **Targets**: 50% CPU, 70% memory (starts scaling at moderate load)
+
+### Anti-Affinity Strategy
+```yaml
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      weight: 100
+      topologyKey: kubernetes.io/hostname
+```
+- Spreads pods across different nodes (minikube-m01, m02, m03)
+- Prevents single node failure taking down all replicas
+- "Preferred" = best effort, not required (allows deployment to proceed)
+
+---
+
+## Cost Estimate (Minikube)
+
+| Resource | Cost |
+|----------|------|
+| Minikube | **FREE** (runs on your machine) |
+| Docker | **FREE** (if already installed) |
+| Kubernetes | **FREE** (open-source) |
+| **Total** | **$0/month** ✅ |
+
+**Future migration to AWS EKS**: Same manifests work! Just change `imagePullPolicy: Always` and update image registry to ECR.
+
+---
+
+**Status**: ✅ Portfolio Deployed on Kubernetes
+**Next**: Step 5 - Create Helm Chart (optional packaging/templating)
+
