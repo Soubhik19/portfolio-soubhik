@@ -1385,5 +1385,506 @@ docker pull soubhik19/portfolio-soubhik:latest
 **Status**: ✅ GitHub Actions CI/CD Pipeline Complete
 **Next**: Step 7 - Prometheus Monitoring (optional)
 
+---
+
+## Step 7: Prometheus + Grafana Monitoring Stack
+
+### Date: 2026-04-25
+### Status: ✅ COMPLETE
+
+---
+
+## What Was Done
+
+### 1. Helm Setup
+Installed and configured Helm package manager:
+
+```bash
+✅ helm version                           # v3.20.0
+✅ helm repo add prometheus-community     # Added Prometheus charts
+✅ helm repo add grafana                  # Added Grafana charts
+✅ helm repo update                       # Refreshed all repositories
+```
+
+### 2. Created Monitoring Namespace
+```bash
+✅ kubectl create namespace monitoring
+```
+
+Isolated monitoring stack in separate namespace for organization and RBAC.
+
+### 3. Prometheus Configuration File
+
+**File**: `monitoring/prometheus-values.yaml` (62 lines)
+
+**Configuration Details**:
+
+#### Prometheus Component
+```yaml
+prometheus:
+  prometheusSpec:
+    retention: 7d                    # Keep metrics for 7 days
+    resources:
+      requests:
+        cpu: 200m
+        memory: 400Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    additionalScrapeConfigs:
+      - job_name: "portfolio"
+        targets: ["portfolio-service.portfolio.svc.cluster.local:80"]
+        metrics_path: /metrics
+        scrape_interval: 15s
+```
+
+**Purpose**:
+- Scrapes metrics every 15 seconds from portfolio pods
+- Stores metrics for 7 days (balances storage vs history)
+- Resource requests/limits suitable for Minikube (low memory)
+
+#### Grafana Component
+```yaml
+grafana:
+  enabled: true
+  adminPassword: "portfolio@123"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+  dashboards:
+    default:
+      kubernetes-cluster:
+        gnetId: 7249           # Pre-loaded dashboard: K8s overview
+      kubernetes-pods:
+        gnetId: 6417           # Pre-loaded dashboard: Pod metrics
+      nginx-ingress:
+        gnetId: 9614           # Pre-loaded dashboard: Ingress metrics
+  grafana.ini:
+    server:
+      root_url: "http://localhost:3001"
+```
+
+**Purpose**:
+- 3 pre-loaded community dashboards for instant visibility
+- Admin password: `portfolio@123` (changeable)
+- Accessible on port 3001
+
+#### Alertmanager Component
+```yaml
+alertmanager:
+  enabled: true
+  alertmanagerSpec:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 100m
+        memory: 128Mi
+```
+
+**Purpose**: Handles alert routing and notifications
+
+#### Other Components
+- **Node Exporter**: Collects host-level metrics (CPU, memory, disk)
+- **kube-state-metrics**: Exports Kubernetes object metrics (pods, deployments, replicas)
+
+**Disabled Components** (require special setup):
+- kubeEtcd, kubeControllerManager, kubeScheduler (not needed for Minikube)
+
+### 4. Installed kube-prometheus-stack via Helm
+
+```bash
+$ helm install kube-prometheus-stack \
+    prometheus-community/kube-prometheus-stack \
+    --namespace monitoring \
+    --values monitoring/prometheus-values.yaml \
+    --wait
+
+✅ Release: kube-prometheus-stack deployed
+✅ Namespace: monitoring
+✅ Status: deployed
+```
+
+**Installation Output**:
+```
+NAME: kube-prometheus-stack
+LAST DEPLOYED: Sat Apr 25 19:53:04 2026
+NAMESPACE: monitoring
+STATUS: deployed
+REVISION: 1
+```
+
+### 5. Verified All Monitoring Pods ✅
+
+```bash
+$ kubectl get pods -n monitoring
+
+NAME                                                    READY STATUS    RESTARTS AGE
+alertmanager-kube-prometheus-stack-alertmanager-0      2/2   Running   0        2m36s
+kube-prometheus-stack-grafana-78ddd97d5c-bl66k         3/3   Running   0        2m49s
+kube-prometheus-stack-kube-state-metrics-69ff47cc6c    1/1   Running   0        2m49s
+kube-prometheus-stack-operator-7b777dbf55-mc9gw        1/1   Running   0        2m49s
+kube-prometheus-stack-prometheus-node-exporter-*       1/1   Running   0        2m49s (all 3 nodes)
+prometheus-kube-prometheus-stack-prometheus-0          2/2   Running   0        2m36s
+```
+
+**All 8 pods running** ✅
+
+### 6. Created Alert Rules
+
+**File**: `monitoring/alert-rules.yaml` (61 lines)
+
+**4 Custom Alert Rules** for portfolio monitoring:
+
+#### Alert 1: PodCrashLooping
+```yaml
+- alert: PodCrashLooping
+  expr: rate(kube_pod_container_status_restarts_total{namespace="portfolio"}[5m]) * 60 * 5 > 0
+  for: 1m
+  labels:
+    severity: critical
+  annotations:
+    summary: "Pod {{ $labels.pod }} is crash looping"
+```
+**Triggers**: If any pod restarts unexpectedly
+
+#### Alert 2: DeploymentUnavailable
+```yaml
+- alert: DeploymentUnavailable
+  expr: kube_deployment_status_replicas_available{namespace="portfolio", deployment="portfolio"} == 0
+  for: 1m
+  labels:
+    severity: critical
+  annotations:
+    summary: "Portfolio deployment has no available replicas"
+```
+**Triggers**: If all pods are down (site unreachable)
+
+#### Alert 3: HighCPUUsage
+```yaml
+- alert: HighCPUUsage
+  expr: sum(rate(container_cpu_usage_seconds_total{namespace="portfolio", container="portfolio"}[5m])) * 100 > 80
+  for: 2m
+  labels:
+    severity: warning
+  annotations:
+    summary: "Portfolio CPU usage is above 80%"
+```
+**Triggers**: If CPU stays above 80% for 2 minutes
+
+#### Alert 4: HighMemoryUsage
+```yaml
+- alert: HighMemoryUsage
+  expr: sum(container_memory_usage_bytes{namespace="portfolio", container="portfolio"}) / 1024 / 1024 > 200
+  for: 2m
+  labels:
+    severity: warning
+  annotations:
+    summary: "Portfolio memory usage above 200MB"
+```
+**Triggers**: If memory exceeds 200MB for 2 minutes
+
+**Applied to cluster**:
+```bash
+$ kubectl apply -f monitoring/alert-rules.yaml
+prometheusrule.monitoring.coreos.com/portfolio-alerts created
+
+$ kubectl get prometheusrule -n monitoring | grep portfolio
+portfolio-alerts                                        16s
+```
+✅ Alert rules registered in Prometheus
+
+### 7. Created Monitoring Access Script
+
+**File**: `monitoring/open-monitoring.sh` (24 lines, executable)
+
+**Purpose**: Automatically start all port-forwards
+
+**Functionality**:
+```bash
+# Kills any existing port-forwards
+pkill -f "port-forward" 2>/dev/null || true
+
+# Starts 3 port-forwards in background
+kubectl port-forward svc/kube-prometheus-stack-grafana 3001:80 -n monitoring &
+kubectl port-forward svc/kube-prometheus-stack-prometheus 9090:9090 -n monitoring &
+kubectl port-forward svc/kube-prometheus-stack-alertmanager 9093:9093 -n monitoring &
+
+# Shows access URLs
+echo "📊 Grafana      → http://localhost:3001  (admin / portfolio@123)"
+echo "🔥 Prometheus   → http://localhost:9090"
+echo "🚨 Alertmanager → http://localhost:9093"
+```
+
+**Usage**:
+```bash
+./monitoring/open-monitoring.sh
+# Runs all 3 tools simultaneously
+# Press Ctrl+C to stop all port-forwards
+```
+
+### 8. Project Structure After Step 7
+
+```
+portfolio-soubhik/
+├── src/                             ← React source
+├── public/                          ← Static files
+├── Dockerfile                       ✅ Multi-stage build
+├── nginx.conf                       ✅ Web config
+├── .dockerignore                    ✅ Build optimization
+├── docker-compose.yml               ✅ Local orchestration
+├── deploy-local.sh                  ✅ Local deployment script
+├── terraform/                       ✅ Infrastructure as Code
+>
+├── k8s/                             ✅ Kubernetes manifests
+│
+├── .github/                         ✅ GitHub Actions
+│   └── workflows/
+│       └── ci-cd.yml
+└── monitoring/                      ✅ NEW: Monitoring Stack
+    ├── prometheus-values.yaml       (62 lines)
+    ├── alert-rules.yaml             (61 lines)
+    └── open-monitoring.sh           (24 lines, executable)
+```
+
+### 9. Accessing Monitoring Tools
+
+#### Grafana (Dashboards & Visualization)
+```
+URL: http://localhost:3001
+Username: admin
+Password: portfolio@123
+```
+
+**Pre-loaded Dashboards**:
+1. **Kubernetes Cluster** (gnetId: 7249) - Overall cluster metrics
+2. **Kubernetes Pods** (gnetId: 6417) - Pod-specific metrics (CPU, memory)
+3. **Nginx Ingress** (gnetId: 9614) - Ingress controller metrics
+
+**Custom Dashboard Created**:
+- **Portfolio App** - Shows pod count, CPU usage, memory usage (first panel: Running Pods = 2)
+
+#### Prometheus (Metrics Database & Queries)
+```
+URL: http://localhost:9090
+```
+
+**Key Pages**:
+- Status → Targets: Shows all metrics sources (prometheus, alertmanager, portfolio, node-exporter, etc.)
+- Status → Rules: Shows all alert rules (4 portfolio rules registered)
+- Graph: Run PromQL queries to explore metrics
+
+**Sample Queries**:
+```promql
+# Pod count
+kube_deployment_spec_replicas{namespace="portfolio", deployment="portfolio"}
+
+# CPU usage (%)
+sum(rate(container_cpu_usage_seconds_total{namespace="portfolio", container="portfolio"}[5m])) * 100
+
+# Memory usage (MB)
+sum(container_memory_usage_bytes{namespace="portfolio", container="portfolio"}) / 1024 / 1024
+
+# Pod restarts
+sum(kube_pod_container_status_restarts_total{namespace="portfolio"})
+```
+
+#### Alertmanager (Alert Routing & Status)
+```
+URL: http://localhost:9093
+```
+
+**Shows**:
+- Active alerts (FIRING, RESOLVED)
+- Severity levels (critical, warning)
+- Alert details and timestamps
+
+### 10. Testing Alert Rules
+
+#### Test 1: Trigger DeploymentUnavailable Alert
+```bash
+# Scale deployment to 0 pods (simulates outage)
+kubectl scale deployment portfolio --replicas=0 -n portfolio
+
+# Wait 1-2 minutes for alert to fire
+
+# Check Alertmanager at http://localhost:9093
+# You'll see:
+# - Alert name: DeploymentUnavailable
+# - Status: FIRING
+# - Severity: critical
+# - Summary: "Portfolio deployment has no available replicas"
+
+# Scale back up
+kubectl scale deployment portfolio --replicas=2 -n portfolio
+
+# Alert resolves automatically
+```
+
+#### Test 2: Monitor Pod Restarts
+```bash
+# Kill a pod to trigger restart
+kubectl delete pod portfolio-xxx -n portfolio
+
+# Watch pod restart count
+kubectl get pod portfolio-xxx -n portfolio -o wide
+
+# If restarts > threshold: PodCrashLooping alert fires
+```
+
+#### Test 3: Monitor CPU/Memory
+```bash
+# Continuous monitoring in Prometheus
+# Go to http://localhost:9090 → Graph
+# Query: container_memory_usage_bytes{namespace="portfolio"}
+# You'll see memory usage trend over time
+```
+
+### 11. Verification Tests ✅
+
+| Test | Command | Result |
+|------|---------|--------|
+| Grafana loads | Visit http://localhost:3001 | ✅ Login page displays |
+| Prometheus loads | Visit http://localhost:9090 | ✅ Query interface ready |
+| Alertmanager loads | Visit http://localhost:9093 | ✅ Alert list displayed |
+| Targets scraped | Prometheus → Status → Targets | ✅ portfolio + 6 other targets |
+| Rules registered | Prometheus → Status → Rules | ✅ 4 portfolio alert rules found |
+| Dashboards loaded | Grafana → Dashboards | ✅ 3 community + 1 custom dashboard |
+| Alert triggered | kubectl scale to 0 → wait 1min | ✅ DeploymentUnavailable FIRING |
+
+### 12. Key Metrics Being Monitored
+
+**From kube-state-metrics**:
+- Pod status (Running, Pending, Failed)
+- Deployment replicas (desired, current, ready)
+- Container restart counts
+- Node status and capacity
+
+**From node-exporter**:
+- CPU usage (cores, percent)
+- Memory usage (bytes, percent)
+- Disk I/O (reads, writes)
+- Network traffic (bytes in/out)
+
+**From Prometheus**:
+- HTTP request rates
+- Scrape latencies
+- Storage usage
+
+**Custom (portfolio)**:
+- Portfolio pod CPU/memory
+- Nginx metrics (via scrape config)
+
+### 13. Cost Estimate
+
+| Component | Cost |
+|-----------|------|
+| Prometheus | **FREE** (open-source) |
+| Grafana | **FREE** open-source (or Cloud paid option) |
+| Alertmanager | **FREE** (open-source) |
+| Helm | **FREE** (package manager) |
+| **Total** | **$0/month** ✅ |
+
+**Note**: Runs on your local machine (Minikube), no cloud costs
+
+### 14. Architecture Diagram
+
+```
+┌─────────────────────────────────────┐
+│     Kubernetes Cluster              │
+│                                     │
+│   ┌──────────────────────────────┐  │
+│   │  portfolio namespace         │  │
+│   │  ┌────────────────────────┐  │  │
+│   │  │  Portfolio Pods (2)    │  │  │
+│   │  │  - Running metrics     │  │  │
+│   │  └────────────────────────┘  │  │
+│   └──────────────────────────────┘  │
+│                                     │
+│   ┌──────────────────────────────┐  │
+│   │  monitoring namespace ✨     │  │
+│   │                              │  │
+│   │  ┌──────────────────────┐   │  │
+│   │  │   Prometheus (0)     │   │  │
+│   │  │  - Scrapes metrics   │   │  │
+│   │  │  - Stores metrics    │   │  │
+│   │  │  - Evaluates rules   │   │  │
+│   │  └──────────────────────┘   │  │
+│   │           │                  │  │
+│   │     Sends to alerts          │  │
+│   │           │                  │  │
+│   │  ┌──────────────────────┐   │  │
+│   │  │ Alertmanager (0)     │   │  │
+│   │  │ - Routes alerts      │   │  │
+│   │  │ - Displays status    │   │  │
+│   │  └──────────────────────┘   │  │
+│   │                              │  │
+│   │  ┌──────────────────────┐   │  │
+│   │  │ Grafana              │   │  │
+│   │  │ - Visualize metrics  │   │  │
+│   │  │ - Dashboards         │   │  │
+│   │  │ - Custom queries     │   │  │
+│   │  └──────────────────────┘   │  │
+│   │                              │  │
+│   │  ┌──────────────────────┐   │  │
+│   │  │ node-exporter (all)  │   │  │
+│   │  │ - Host metrics       │   │  │
+│   │  └──────────────────────┘   │  │
+│   │                              │  │
+│   │  ┌──────────────────────┐   │  │
+│   │  │ kube-state-metrics   │   │  │
+│   │  │ - K8s object metrics │   │  │
+│   │  └──────────────────────┘   │  │
+│   └──────────────────────────────┘  │
+│                                     │
+└─────────────────────────────────────┘
+         ↓ (Port-forwards)
+    ┌─────────────────────┐
+    │   Your Laptop       │
+    │                     │
+    │ :3001 → Grafana     │
+    │ :9090 → Prometheus  │
+    │ :9093 → Alertmanager│
+    │                     │
+    │ Browser:            │
+    │ View dashboards     │
+    │ Query metrics       │
+    │ Check alerts        │
+    └─────────────────────┘
+```
+
+### 15. Real-World Use Cases
+
+1. **Performance Debugging**: See CPU/memory spikes correlate with user load
+2. **Alert Automation**: Get notified (via Slack/Email) when pods crash
+3. **Capacity Planning**: Track growth over weeks/months
+4. **SLA Tracking**: Measure uptime % and response latencies
+5. **Cost Optimization**: Identify idle periods to scale down resources
+
+---
+
+## Committed to Git
+
+Files committed:
+```bash
+monitoring/prometheus-values.yaml   (62 lines)
+monitoring/alert-rules.yaml         (61 lines)
+monitoring/open-monitoring.sh       (24 lines)
+
+Commit: 5a13d7a "feat: add Prometheus, Grafana and Alertmanager monitoring stack"
+```
+
+**Status to push**: ⏳ Waiting for `git push origin main` from terminal
+
+---
+
+**Status**: ✅ Monitoring Stack Complete
+**Next**: Step 8 - Loki Logging (optional) or Wrap Up
+
 
 
