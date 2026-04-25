@@ -493,3 +493,290 @@ portfolio-soubhik/
 **Status**: ✅ Step 2 Complete — Ready for Step 3 (Terraform)
 
 **Next**: Create Terraform infrastructure (VPC, EKS, ECR, IAM)
+
+---
+
+---
+
+# Step 3: Terraform Infrastructure Provisioning
+
+### Date: 2026-04-25
+### Status: ⏳ FILES CREATED & VALIDATED (Awaiting AWS Credentials)
+
+---
+
+## What Was Done
+
+### Terraform Files Created (6 files):
+
+#### 1. `terraform/variables.tf` (Input variables)
+**Purpose**: Define all configurable parameters for the infrastructure
+
+**Variables**:
+- `aws_region`: ap-south-1 (Mumbai)
+- `cluster_name`: portfolio-cluster
+- `ecr_repo_name`: portfolio-soubhik
+- `node_instance_type`: t3.small
+- `node_min`: 1, `node_max`: 3, `node_desired`: 2
+
+---
+
+#### 2. `terraform/main.tf` (Provider configuration)
+**Purpose**: Configure Terraform providers and AWS region
+
+**Key Components**:
+- AWS provider (~> 5.0)
+- Kubernetes provider (~> 2.0)
+- Availability zones fetching
+- Backend S3 (commented - uncomment after first apply)
+
+---
+
+#### 3. `terraform/vpc.tf` (VPC networking)
+**Purpose**: VPC with public/private subnets across 2 AZs
+
+**Architecture**:
+- VPC CIDR: 10.0.0.0/16
+- Public subnets: 10.0.101.0/24, 10.0.102.0/24
+- Private subnets: 10.0.1.0/24, 10.0.2.0/24 (for EKS nodes)
+- Single NAT Gateway (cost-saving)
+- EKS subnet tags applied automatically
+
+---
+
+#### 4. `terraform/eks.tf` (EKS cluster)
+**Purpose**: Create Kubernetes cluster and worker nodes
+
+**EKS Configuration**:
+- Cluster version: 1.29
+- IRSA enabled (OIDC for pod permissions)
+- Node group: t3.small (min 1, max 3, desired 2)
+- Auto-update kubeconfig
+
+**Cost**: ~$0.10/hour control plane + ~$0.044/hour per node
+
+---
+
+#### 5. `terraform/ecr.tf` (Docker registry)
+**Purpose**: Private ECR repository for portfolio images
+
+**Features**:
+- Image scanning on push
+- Lifecycle policy (keep last 10 images)
+- Auto-cleanup of old images
+
+---
+
+#### 6. `terraform/outputs.tf` (Output values)
+**Purpose**: Display important resource endpoints after creation
+
+**Outputs**:
+- cluster_name
+- cluster_endpoint
+- ecr_repository_url
+- vpc_id
+- region
+
+---
+
+## Terraform Initialization
+
+### Status: ✅ Complete
+
+```
+✅ terraform init succeeded
+✅ Providers downloaded (aws v5.100.0, kubernetes v2.38.0)
+✅ .terraform.lock.hcl created (provider lock file)
+✅ terraform validate passed
+```
+
+---
+
+## What Changed in Your Project
+
+```
+portfolio-soubhik/
+├── terraform/                 ✅ NEW
+│   ├── variables.tf           ✅ 
+│   ├── main.tf                ✅ 
+│   ├── vpc.tf                 ✅ 
+│   ├── eks.tf                 ✅ 
+│   ├── ecr.tf                 ✅ 
+│   ├── outputs.tf             ✅ 
+│   └── .terraform/            (auto-generated)
+├── .terraform.lock.hcl        ✅ NEW
+├── Dockerfile                 ✅ (Step 1)
+├── docker-compose.yml         ✅ (Step 2)
+└── STEP_TRACKER.md            ✅ Updated
+```
+
+---
+
+## ⚠️ NEXT: AWS Credentials Required
+
+Before `terraform apply`, configure AWS credentials:
+
+### Option 1: AWS CLI (Recommended)
+```bash
+aws configure
+
+AWS Access Key ID:     [from IAM console]
+AWS Secret Access Key: [from IAM console]
+Default region:        ap-south-1
+Default output format: json
+```
+
+### Option 2: Environment Variables
+```bash
+export AWS_ACCESS_KEY_ID="..."
+export AWS_SECRET_ACCESS_KEY="..."
+export AWS_DEFAULT_REGION="ap-south-1"
+```
+
+---
+
+## When Ready: Run These Commands
+
+```bash
+# Step 1: Review what will be created (free)
+terraform plan
+
+# Step 2: Create AWS resources (15-20 mins, ~$3-4/day cost)
+terraform apply
+
+# Step 3: View outputs
+terraform output
+
+# Step 4: Test kubectl connection
+kubectl get nodes
+```
+
+---
+
+## Cost Estimate
+
+- **EKS Control Plane**: $0.10/hour
+- **2x t3.small nodes**: $0.044/hour each
+- **NAT Gateway**: $0.05/hour
+- **Total**: ~$95-100/month (running 24/7)
+
+**Save cost**: Scale nodes to 0 when not working (~$50/month for control plane only)
+
+---
+
+---
+
+## Step 3: Minikube Kubernetes Cluster Setup
+
+### Date: 2026-04-25
+### Status: ✅ COMPLETE
+
+---
+
+## What Was Done
+
+### Initial Setup
+- **Deleted** old minikube cluster (fresh start)
+- **Started** new 3-node minikube cluster:
+  - 1x Control Plane node
+  - 2x Worker nodes
+  - CPU: 4 cores, Memory: 8GB
+  - Driver: Docker
+
+### Docker Image Preparation
+1. **Built** portfolio Docker image (33.8 MB)
+   - Multi-stage build: node:20-alpine → nginx:alpine
+   - Optimized for SPA deployment
+   - Health endpoint `/health` working
+
+2. **Loaded** image into minikube
+   - Docker image available: `docker.io/library/portfolio-soubhik:latest`
+   - Ready for Kubernetes deployment
+
+### Minikube Registry Setup
+- **Enabled** minikube registry addon for container image management
+- **Service running**: `kube-system/registry` on port 80:443
+- **ClusterIP**: 10.102.143.136
+
+### Verification Tests ✅
+
+#### Test 1: Cluster Status
+```bash
+$ kubectl get nodes
+NAME           STATUS   ROLES           AGE   VERSION
+minikube       Ready    control-plane   74s   v1.34.0
+minikube-m02   Ready    <none>          39s   v1.34.0
+minikube-m03   Ready    <none>          8s    v1.34.0
+```
+✅ All 3 nodes Ready
+
+#### Test 2: Cluster Info
+```bash
+$ kubectl cluster-info
+Kubernetes control plane at https://192.168.49.2:8443
+CoreDNS at https://192.168.49.2:8443/api/v1/namespaces/kube-system/services/kube-dns:dns/proxy
+```
+✅ Control plane running
+
+#### Test 3: Image Loaded
+```bash
+$ minikube image ls | grep portfolio
+docker.io/library/portfolio-soubhik:latest
+```
+✅ Image available for deployment
+
+#### Test 4: System Pods
+```bash
+$ kubectl get pods -n kube-system
+# All system pods running (kube-proxy, coredns, etcd, kube-controller-manager, kube-scheduler, etc.)
+```
+✅ All system components healthy
+
+### What Changed in Your Project
+
+```
+portfolio-soubhik/
+├── Dockerfile                ← EXISTING: Multi-stage build
+├── nginx.conf                ← EXISTING: Web server config
+├── .dockerignore             ← EXISTING: Build context optimization
+├── terraform/                ← EXISTING: Infrastructure as Code (kept for future AWS deployment)
+│   ├── variables.tf
+│   ├── main.tf
+│   ├── vpc.tf
+│   ├── eks.tf
+│   ├── ecr.tf
+│   └── outputs.tf
+└── ... (rest of project)
+```
+
+**No files changed or added. Docker image built and loaded into minikube.**
+
+---
+
+## Why Minikube Instead of EKS?
+
+| Feature | Minikube | AWS EKS |
+|---------|----------|---------|
+| **Cost** | ✅ FREE | ❌ $0.10/hr control plane + nodes |
+| **Setup Time** | ✅ 2 mins | ❌ 15-20 mins |
+| **Learning** | ✅ Perfect | ✅ Production-ready |
+| **Scalability** | ❌ Single/3-node | ✅ Auto-scaling to 1000s |
+| **Free Tier** | ✅ Yes | ❌ Not eligible |
+
+**Decision**: Use Minikube for development/testing, deploy to EKS later (Terraform files already ready!)
+
+---
+
+## Next Steps
+
+1. **Step 4**: Create Kubernetes manifests (deployment, service, ingress)
+2. **Step 5**: Deploy to minikube
+3. **Step 6**: Test portfolio access via local URL
+4. **Step 7**: Setup GitHub Actions CI/CD (push to Docker Hub/ECR)
+5. **Future**: Scale to AWS EKS using same manifests
+
+---
+
+**Status**: ✅ Kubernetes Cluster Ready
+**Next**: Create Kubernetes manifests for portfolio deployment
+
