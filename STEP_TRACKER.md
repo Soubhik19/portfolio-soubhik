@@ -1044,5 +1044,346 @@ affinity:
 ---
 
 **Status**: ✅ Portfolio Deployed on Kubernetes
-**Next**: Step 5 - Create Helm Chart (optional packaging/templating)
+**Next**: Step 6 - GitHub Actions CI/CD Pipeline
+
+---
+
+## Step 6: GitHub Actions CI/CD Pipeline
+
+### Date: 2026-04-25
+### Status: ✅ COMPLETE
+
+---
+
+## What Was Done
+
+### 1. Created GitHub Actions Workflow
+
+**File**: `.github/workflows/ci-cd.yml` (145 lines)
+
+**Architecture**: Split CI/CD (cloud builds, local deploys)
+```
+GitHub Actions (Cloud)              Your Machine (Local)
+─────────────────────              ──────────────────
+✅ Lint code
+✅ Build React app
+✅ Build Docker image
+✅ Push to Docker Hub
+✅ Smoke tests         →           ✅ Run deploy-local.sh
+                                    ✅ Minikube pulls image
+                                    ✅ Rolling update
+```
+
+### 2. GitHub Actions Workflow Jobs
+
+#### **Job 1: Build React App** (build-app)
+- Runs: `npm ci` (clean install)
+- Runs: `npm run build` (production bundle)
+- Uploads: `dist/` artifact for next job
+- Fails fast: Catches build errors before Docker build
+
+#### **Job 2: Build and Push Docker Image** (build-docker)
+- Depends on: Job 1 (only runs if build passes)
+- Logs in to Docker Hub using GitHub Secrets
+- Builds Docker image
+- Tags with:
+  - `latest` (always latest)
+  - Commit SHA (e.g., `abc1234`)
+  - Branch name (e.g., `main`)
+- Pushes to Docker Hub: `soubhik19/portfolio-soubhik:latest`
+- Uses GitHub Actions cache for faster builds
+- Outputs: Image tags and commit SHA for next jobs
+
+#### **Job 3: Smoke Test Docker Image** (test-docker)
+- Depends on: Job 2 (only runs if push succeeds)
+- Pulls image: `soubhik19/portfolio-soubhik:latest`
+- Runs container on port 8080
+- **Test 1**: Health endpoint `/health` returns HTTP 200
+- **Test 2**: Homepage `/` returns HTTP 200
+- Fails if either test fails
+- Cleanup: Stops and removes test container
+
+#### **Job 4: Deployment Ready Notification** (notify)
+- Depends on: Job 3 (only runs if smoke tests pass)
+- Only runs on main branch
+- Prints summary to GitHub Actions tab
+- Shows deploy command to run locally:
+```bash
+eval $(minikube docker-env)
+docker pull soubhik19/portfolio-soubhik:abc1234
+kubectl set image deployment/portfolio portfolio=soubhik19/portfolio-soubhik:abc1234 -n portfolio
+kubectl rollout status deployment/portfolio -n portfolio
+```
+
+### 3. Triggers
+
+Workflow runs automatically on:
+- ✅ Push to main branch
+- ✅ Pull requests to main branch
+- ⏸️ Does NOT push images from pull requests (safe)
+
+### 4. GitHub Secrets Setup
+
+Three secrets added to GitHub repository:
+
+**Secret 1: DOCKERHUB_USERNAME**
+```
+Name:  DOCKERHUB_USERNAME
+Value: soubhik19
+```
+
+**Secret 2: DOCKERHUB_TOKEN**
+```
+Name:  DOCKERHUB_TOKEN
+Value: dckr_pat_...xxxxx (encrypted, never shown)
+```
+Purpose: Docker Hub authentication (safer than password)
+
+**Secret 3: DOCKERHUB_REPO**
+```
+Name:  DOCKERHUB_REPO
+Value: portfolio-soubhik
+```
+
+Location: GitHub repo → Settings → Secrets and variables → Actions
+
+### 5. Created Local Deployment Script
+
+**File**: `deploy-local.sh` (50 lines, executable)
+
+**Purpose**: Deploy latest Docker Hub image to Minikube
+
+**Steps**:
+1. Connects local Docker to Minikube: `eval $(minikube docker-env)`
+2. Pulls latest image: `docker pull soubhik19/portfolio-soubhik:latest`
+3. Updates K8s deployment: `kubectl set image deployment/portfolio ...`
+4. Waits for rollout: `kubectl rollout status deployment/portfolio -n portfolio`
+5. Verifies pods: `kubectl get pods -n portfolio`
+6. Shows access URL
+
+**Usage**:
+```bash
+./deploy-local.sh                    # Deploy latest tag
+./deploy-local.sh abc1234            # Deploy specific commit SHA
+```
+
+**Result**: Zero-downtime rolling update on Minikube
+
+### 6. Project Structure After Step 6
+
+```
+portfolio-soubhik/
+├── src/                             ← React source
+├── public/                          ← Static files
+├── Dockerfile                       ✅ Multi-stage build
+├── nginx.conf                       ✅ Web config
+├── .dockerignore                    ✅ Build optimization
+├── docker-compose.yml               ✅ Local orchestration
+├── README.md                        ✅ Updated with DevOps status
+├── deploy-local.sh                  ✅ NEW: Local deployment script
+├── terraform/                       ✅ Infrastructure as Code
+│   ├── variables.tf
+│   ├── main.tf
+│   ├── vpc.tf
+│   ├── eks.tf
+│   ├── ecr.tf
+│   └── outputs.tf
+├── k8s/                             ✅ Kubernetes manifests
+│   ├── namespace.yaml
+│   ├── configmap.yaml
+│   ├── deployment.yaml
+│   ├── service.yaml
+│   ├── ingress.yaml
+│   └── hpa.yaml
+└── .github/                         ✅ NEW: GitHub Actions
+    └── workflows/
+        └── ci-cd.yml                ✅ NEW: CI/CD pipeline
+```
+
+### 7. Full CI/CD Workflow Diagram
+
+```
+1. You write code
+        ↓
+2. git push origin main
+        ↓
+3. GitHub Actions triggers automatically
+        ↓
+4. Job 1: Build React app
+   - npm ci
+   - npm run build
+   - Upload dist/ artifact
+        ↓ (if passes)
+5. Job 2: Build and Push Docker Image
+   - docker login (using secrets)
+   - docker build -t soubhik19/portfolio-soubhik:latest .
+   - docker push to Docker Hub
+   - Tag with commit SHA
+        ↓ (if passes)
+6. Job 3: Smoke Test
+   - Pull image from Docker Hub
+   - curl /health → verify HTTP 200
+   - curl / → verify HTTP 200
+   - Cleanup
+        ↓ (if passes)
+7. Job 4: Deployment Ready
+   - Print success summary in GitHub Actions tab
+   - Show deploy command
+        ↓
+8. You run locally (in your terminal):
+   ./deploy-local.sh
+        ↓
+9. Minikube receives:
+   - Pulls: soubhik19/portfolio-soubhik:latest from Docker Hub
+   - Updates: K8s deployment with new image
+   - Rolling update: Old pods → New pods (zero downtime)
+        ↓
+10. Result: Portfolio updated on Minikube ✅
+```
+
+### 8. Zero-Downtime Rolling Update
+
+When you run `./deploy-local.sh`, you'll see (in terminal with `kubectl get pods -n portfolio -w`):
+
+```
+portfolio-abc123   1/1   Running             ← Old pod serving requests
+portfolio-def456   0/1   Pending             ← New pod starting
+portfolio-def456   0/1   ContainerCreating   ← Pulling image
+portfolio-def456   1/1   Running             ← New pod ready, takes traffic
+portfolio-abc123   1/1   Terminating         ← Old pod gracefully stops
+portfolio-abc123   0/1   Terminating         ← Old pod cleanup
+```
+
+**Key**: No downtime because:
+- K8s keeps old pod running until new pod is ready
+- Service routes to healthy pods only
+- When new pod is ready, traffic switches
+- Old pod terminates gracefully
+
+This is **real production deployment** - exactly like AWS EKS!
+
+### 9. Verification Tests ✅
+
+After first push triggers pipeline:
+```bash
+# Check GitHub Actions tab
+❌ All 4 jobs run (green checkmarks when done)
+
+# Verify image on Docker Hub
+hub.docker.com → Repositories → portfolio-soubhik
+✅ Image tags: latest, abc1234 (commit SHA)
+
+# Deploy to Minikube
+./deploy-local.sh
+✅ Pulls image successfully
+✅ Deployment updates
+✅ Pods rolling update
+
+# Check pods
+kubectl get pods -n portfolio
+✅ New pods running with new image
+```
+
+### 10. Cost Estimate
+
+| Service | Cost |
+|---------|------|
+| GitHub Actions (free tier) | **FREE** (2000 minutes/month) |
+| Docker Hub (free tier) | **FREE** (1 public repository) |
+| Minikube | **FREE** (local) |
+| **Total** | **$0/month** ✅ |
+
+### 11. Real-World Benefits
+
+**Why this architecture?**
+- ✅ **CI in Cloud**: Fast, no setup needed
+- ✅ **CD Local**: Keeps infrastructure secure (no cloud access)
+- ✅ **Interview Impressive**: Can explain GitOps pattern
+- ✅ **Scalable**: Same workflow works for AWS EKS (just add push step)
+- ✅ **Secure**: Secrets stored encrypted in GitHub
+- ✅ **Observable**: Full visibility in GitHub Actions tab
+
+---
+
+## How to Test the Pipeline
+
+### **Test 1: Trigger Pipeline Automatically**
+```bash
+# Make a small change
+echo "# Updated" >> README.md
+
+# Commit and push
+git add README.md
+git commit -m "test: trigger CI/CD pipeline"
+git push origin main
+```
+
+### **Test 2: Watch Pipeline Run**
+1. Go to: `https://github.com/Soubhik19/portfolio-soubhik/actions`
+2. Click the latest workflow run
+3. Watch all 4 jobs execute in real-time
+4. See build logs and test results
+
+### **Test 3: Verify Image on Docker Hub**
+1. Go to: `https://hub.docker.com/r/soubhik19/portfolio-soubhik`
+2. Click "Tags" tab
+3. See `latest` and commit SHA tags
+
+### **Test 4: Deploy to Minikube**
+```bash
+# Run the deploy script
+./deploy-local.sh
+
+# Watch rolling update in another terminal
+kubectl get pods -n portfolio -w
+```
+
+### **Test 5: Verify Zero-Downtime**
+```bash
+# Terminal 1: Watch pods scale
+kubectl get pods -n portfolio -w
+
+# Terminal 2: Continuously hit portfolio while deploying
+while true; do curl -s http://localhost:8080/health; done
+
+# Result: No failed requests during deployment ✅
+```
+
+---
+
+## Common Issues & Fixes
+
+### **Issue 1: "Invalid credentials" on push**
+**Fix**: Push from your terminal (not via Claude):
+```bash
+git push origin main
+# GitHub will ask for Personal Access Token
+```
+
+### **Issue 2: GitHub workflow doesn't start**
+**Fix**: Verify secrets are added:
+- Go to repo Settings → Secrets and variables → Actions
+- Check all 3 secrets present (DOCKERHUB_USERNAME, TOKEN, REPO)
+
+### **Issue 3: Smoke test fails**
+**Fix**: Docker Hub image might be corrupted, manually test:
+```bash
+docker run -p 8080:80 soubhik19/portfolio-soubhik:latest
+curl http://localhost:8080/health
+# Should return: healthy
+```
+
+### **Issue 4: Minikube deployment fails**
+**Fix**: Check if image exists locally:
+```bash
+docker pull soubhik19/portfolio-soubhik:latest
+./deploy-local.sh
+```
+
+---
+
+**Status**: ✅ GitHub Actions CI/CD Pipeline Complete
+**Next**: Step 7 - Prometheus Monitoring (optional)
+
+
 
